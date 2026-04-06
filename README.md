@@ -1,25 +1,27 @@
 # emdash-plugin-deploy-hook
 
-Static site generation plugin for [EmDash CMS](https://emdashcms.com). Converts public pages to pre-built HTML files served instantly with zero database queries. The admin panel continues working normally.
+Static site generation plugin for [EmDash CMS](https://emdashcms.com).
+
+Converts public pages to pre-built HTML files — zero database queries at runtime. The admin panel keeps working normally. Edit content, click **Build & Deploy**, done.
 
 ## Features
 
-- One-click **Build & Deploy** from the admin panel
-- Auto-prerenders all public pages as static HTML at build time
-- No page file modifications needed — works automatically
-- Admin panel (`/_emdash/*`) stays server-rendered with full D1 access
-- Works with Cloudflare Workers Builds, or any CI/CD with deploy hooks
-- Configurable — choose which routes stay dynamic
+- Pre-builds all public pages as static HTML at build time
+- No page file modifications needed — fully automatic
+- Admin panel with one-click **Build & Deploy** button
+- Fast builds with D1 HTTP API (parallel queries) when `CF_D1_TOKEN` is set
+- Falls back to wrangler CLI if no token (slower but works)
+- Admin routes (`/_emdash/*`) stay server-rendered
 
 ## Install
 
 ```bash
-npm install github:mohamedmostafa58/emdash-plugin-deploy-hook
+npm install github:personalwebsitesorg/emdash-plugin-deploy-hook
 ```
 
 ## Setup
 
-### 1. Add to `astro.config.mjs`
+### 1. Update `astro.config.mjs`
 
 ```typescript
 import { deployHook, deployHookPlugin } from "emdash-plugin-deploy-hook";
@@ -44,36 +46,36 @@ export default defineConfig({
 });
 ```
 
-### 2. Add the build script
+### 2. Connect GitHub to Cloudflare Workers Builds
 
-Create `build.sh` in your project root. This script copies your production D1 data into the local build environment so Astro can prerender pages with real content.
+1. Push your code to GitHub
+2. Cloudflare Dashboard → Workers & Pages → your worker → Settings → Builds
+3. Connect to Git → select your repo
+4. Build command: `npm run build`
+5. Deploy command: `npx wrangler deploy`
 
-See the full `build.sh` in the [documentation](DEPLOY-HOOK-PLUGIN.md). Replace `YOUR_DB_NAME` with your D1 database name from `wrangler.jsonc`.
+### 3. Set up a D1 token (recommended)
 
-Update `package.json`:
+This makes builds **much faster** (parallel API queries instead of sequential CLI calls).
 
-```json
-{
-  "scripts": {
-    "build": "bash build.sh",
-    "build:ssr": "astro build"
-  }
-}
-```
+1. Cloudflare Dashboard → My Profile → API Tokens → Create Token
+2. Custom Token → Permissions: **D1 (Read)** → Create
+3. Copy the token
+4. Add it as a build variable: Workers & Pages → your worker → Settings → Builds → Build variables
+5. Name: `CF_D1_TOKEN`, Value: your token, check **Encrypt**
 
-### 3. Connect GitHub to Cloudflare
+Without the token, the plugin falls back to `wrangler d1 execute --remote` (works but slower).
 
-1. Cloudflare Dashboard → Workers & Pages → your worker → Settings → Builds
-2. Connect to Git → select your repo
-3. Build command: `npm run build`
-4. Deploy command: `npx wrangler deploy`
+### 4. Set up the deploy hook
 
-### 4. Configure the plugin
+1. In Builds settings → Deploy Hooks → Create Hook
+2. Copy the URL
+3. Go to your admin panel → Plugins → Deploy
+4. Paste the URL → Save
 
-1. Create a Deploy Hook in Cloudflare Builds settings
-2. Go to your admin panel → Plugins → Deploy
-3. Paste the hook URL → Save
-4. Click **Build & Deploy**
+### 5. Click Build & Deploy
+
+That's it. Your site is now static.
 
 ## Options
 
@@ -83,21 +85,37 @@ deployHook({
 })
 ```
 
-Admin routes are always excluded automatically.
+## How It Works
 
-## API Routes
+The plugin does three things during `astro build`:
 
-| Endpoint | Method | Description |
-|----------|--------|-------------|
-| `/_emdash/api/plugins/deploy-hook/status` | POST | Returns build status and configuration |
-| `/_emdash/api/plugins/deploy-hook/build` | POST | Triggers a build programmatically |
+1. **Syncs D1 data** — Reads `wrangler.jsonc` for your database config. Fetches only the tables needed for rendering (content, taxonomies, menus, widgets, media, etc.). Skips auth, sessions, plugin state, and other runtime-only tables. Uses D1 HTTP API with parallel requests when `CF_D1_TOKEN` is set, falls back to wrangler CLI otherwise.
+
+2. **Marks public pages as static** — Uses Astro's `astro:route:setup` hook to set `prerender = true` on all pages in `src/pages/`, except admin routes and routes you list as `dynamic`.
+
+3. **Injects `getStaticPaths()`** — A Vite transform detects EmDash content queries in `[slug].astro` files and auto-injects the matching `getStaticPaths()` function. No page files are modified on disk.
+
+At runtime, the plugin provides an admin page with a "Build & Deploy" button that POSTs to your deploy hook URL, triggering a new build on Cloudflare.
+
+## What Gets Prerendered
+
+| Route | Static | Why |
+|-------|--------|-----|
+| `/` | Yes | Homepage |
+| `/posts/[slug]` | Yes | Each post as HTML |
+| `/pages/[slug]` | Yes | Each page as HTML |
+| `/tag/[slug]` | Yes | Tag archives |
+| `/category/[slug]` | Yes | Category archives |
+| `/posts` | Yes | Posts listing |
+| `/rss.xml` | Yes | RSS feed |
+| `/search` | No | Needs runtime query params |
+| `/_emdash/*` | No | Admin panel needs D1 |
 
 ## Requirements
 
 - EmDash >= 0.0.3
 - Astro >= 5.0.0
 - Cloudflare Workers with D1
-- GitHub repo connected to Cloudflare Workers Builds
 
 ## License
 

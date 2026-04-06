@@ -10,10 +10,6 @@ import type { PluginContext } from "emdash";
 
 // ── Helpers ──
 
-function isRecord(v: unknown): v is Record<string, unknown> {
-	return typeof v === "object" && v !== null && !Array.isArray(v);
-}
-
 async function getSettings(ctx: PluginContext) {
 	const hookUrl = (await ctx.kv.get<string>("settings:hookUrl")) ?? "";
 	const lastBuild = (await ctx.kv.get<string>("state:lastBuild")) ?? "";
@@ -60,7 +56,7 @@ async function buildAdminPage(ctx: PluginContext) {
 				type: "banner",
 				title: "Setup required",
 				description:
-					"Enter your deploy hook URL below. You get this from Cloudflare Workers Builds (or Vercel/Netlify) after connecting your GitHub repo.",
+					"Enter your deploy hook URL below. You get this from Cloudflare Workers Builds after connecting your GitHub repo.",
 				variant: "default",
 			},
 			{
@@ -80,7 +76,7 @@ async function buildAdminPage(ctx: PluginContext) {
 		return blocks;
 	}
 
-	// Status fields
+	// Status
 	const fields: { label: string; value: string }[] = [
 		{ label: "Hook URL", value: hookUrl.length > 50 ? hookUrl.slice(0, 50) + "..." : hookUrl },
 		{ label: "Status", value: lastStatus || "Never built" },
@@ -106,7 +102,7 @@ async function buildAdminPage(ctx: PluginContext) {
 		},
 	);
 
-	// Settings form at bottom
+	// Settings
 	blocks.push(
 		{ type: "divider" },
 		{ type: "header", text: "Settings" },
@@ -122,6 +118,18 @@ async function buildAdminPage(ctx: PluginContext) {
 				},
 			],
 			submit: { label: "Update", action_id: "save_settings" },
+		},
+		{ type: "divider" },
+		{ type: "header", text: "D1 Build Token" },
+		{
+			type: "context",
+			text: "For fast builds, create a Cloudflare API token with D1 read permission. Then add it as a build environment variable named CF_D1_TOKEN in your Cloudflare Workers Builds settings (Settings → Builds → Build variables).",
+		},
+		{
+			type: "banner",
+			title: "How to create the token",
+			description: "Cloudflare Dashboard → My Profile → API Tokens → Create Token → Custom Token → Permissions: D1 (Read) → Create. Then copy the token and add it as CF_D1_TOKEN in your Workers Builds settings.",
+			variant: "default",
 		},
 	);
 
@@ -144,12 +152,10 @@ export default definePlugin({
 					values?: Record<string, unknown>;
 				};
 
-				// Page load
 				if (interaction.type === "page_load") {
 					return { blocks: await buildAdminPage(ctx) };
 				}
 
-				// Save settings
 				if (interaction.type === "form_submit" && interaction.action_id === "save_settings") {
 					const values = interaction.values ?? {};
 					if (typeof values.hookUrl === "string" && values.hookUrl) {
@@ -161,7 +167,6 @@ export default definePlugin({
 					};
 				}
 
-				// Trigger build
 				if (interaction.type === "block_action" && interaction.action_id === "trigger_build") {
 					const hookUrl = (await ctx.kv.get<string>("settings:hookUrl")) ?? "";
 					const result = await triggerBuild(ctx, hookUrl);
@@ -180,19 +185,13 @@ export default definePlugin({
 			},
 		},
 
-		// API route for status checks
 		status: {
 			handler: async (_routeCtx: unknown, ctx: PluginContext) => {
 				const { hookUrl, lastBuild, lastStatus } = await getSettings(ctx);
-				return {
-					configured: !!hookUrl,
-					lastBuild,
-					lastStatus,
-				};
+				return { configured: !!hookUrl, lastBuild, lastStatus };
 			},
 		},
 
-		// API route to trigger build programmatically
 		build: {
 			handler: async (_routeCtx: unknown, ctx: PluginContext) => {
 				const hookUrl = (await ctx.kv.get<string>("settings:hookUrl")) ?? "";
