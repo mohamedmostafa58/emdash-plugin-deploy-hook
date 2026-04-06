@@ -12,6 +12,7 @@
 import type { AstroIntegration } from "astro";
 import { execSync } from "node:child_process";
 import { readFileSync, writeFileSync } from "node:fs";
+import { sanitizeName } from "./validation.js";
 
 interface DeployHookOptions {
 	/** Routes to keep as SSR. Defaults to ["/search"]. Admin routes always excluded. */
@@ -161,13 +162,13 @@ function staticPathsVitePlugin() {
 			if (!id.endsWith(".astro") || !id.includes("[")) return null;
 			if (code.includes("getStaticPaths") || id.includes("_emdash")) return null;
 
-			const collectionMatch = code.match(/(?:getEmDashEntry|getEmDashCollection)\s*\(\s*["']([^"']+)["']/);
-			const taxonomyMatch = code.match(/(?:getTerm|getTerms)\s*\(\s*["']([^"']+)["']/);
+			const collectionMatch = code.match(/(?:getEmDashEntry|getEmDashCollection)\s*\(\s*["']([a-zA-Z0-9_-]+)["']/);
+			const taxonomyMatch = code.match(/(?:getTerm|getTerms)\s*\(\s*["']([a-zA-Z0-9_-]+)["']/);
 			if (!collectionMatch && !taxonomyMatch) return null;
 
 			const injection = taxonomyMatch
-				? `\nimport { getTaxonomyTerms as __getTaxonomyTerms } from "emdash";\nexport async function getStaticPaths() {\n\tconst terms = await __getTaxonomyTerms("${taxonomyMatch[1]}");\n\treturn terms.map((t) => ({ params: { slug: t.slug } }));\n}\n`
-				: `\nimport { getEmDashCollection as __getCollection } from "emdash";\nexport async function getStaticPaths() {\n\tconst { entries } = await __getCollection("${collectionMatch![1]}");\n\treturn entries.map((e) => ({ params: { slug: e.id } }));\n}\n`;
+				? `\nimport { getTaxonomyTerms as __getTaxonomyTerms } from "emdash";\nexport async function getStaticPaths() {\n\tconst terms = await __getTaxonomyTerms(${JSON.stringify(sanitizeName(taxonomyMatch[1]))});\n\treturn terms.map((t) => ({ params: { slug: t.slug } }));\n}\n`
+				: `\nimport { getEmDashCollection as __getCollection } from "emdash";\nexport async function getStaticPaths() {\n\tconst { entries } = await __getCollection(${JSON.stringify(sanitizeName(collectionMatch![1]))});\n\treturn entries.map((e) => ({ params: { slug: e.id } }));\n}\n`;
 
 			return { code: injection + code, map: null };
 		},

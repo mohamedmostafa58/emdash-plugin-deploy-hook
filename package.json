@@ -9,7 +9,13 @@
     "./sandbox": "./src/sandbox-entry.ts",
     "./integration": "./src/integration.ts"
   },
-  "files": ["src"],
+  "files": [
+    "src"
+  ],
+  "scripts": {
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
   "keywords": [
     "emdash",
     "cms",
@@ -23,5 +29,8 @@
   "peerDependencies": {
     "astro": ">=5.0.0",
     "emdash": ">=0.0.3"
+  },
+  "devDependencies": {
+    "vitest": "^3.2.4"
   }
 }
